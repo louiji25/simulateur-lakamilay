@@ -1,0 +1,23 @@
+Type,Formule,Transport,Circuit,Durée,Prix
+Mer,Collectif,Bateau,Tany Kely (Simple),Journée,60
+Mer,Collectif,Bateau,Nosy Komba - Tanikely,Journée,60
+Mer,Collectif,Bateau,Nosy Komba - Nosy Vorona - Tanikely,Journée,70
+Mer,Collectif,Bateau,Nosy Iranja (Simple),Journée,60
+Mer,Collectif,Bateau,Nosy Iranja - Nosy Antsoha,Journée,60
+Mer,Spécial,Bateau,Nosy Komba,Journée,500
+Mer,Spécial,Bateau,Nosy Tanikely,Journée,500
+Mer,Spécial,Bateau,Sakatia,Journée,500
+Mer,Spécial,Bateau,Nosy Fanihy - Sakatia,Journée,500
+Mer,Spécial,Bateau,Baie de Russe,Journée,500
+Mer,Spécial,Bateau,Iranja,Journée,660
+Mer,Spécial,Bateau,Iranja - Nosy Antsoha,Journée,660
+Terrestre,Voiture,Voiture,Vent d’Aventure,Journée,100
+Terrestre,Tuk-Tuk,Tuk-Tuk,Vent d’Aventure,Journée,100
+Terrestre,Quad,Quad,Nature Sacrée de Nosy Be,Demi-journée,85
+Terrestre,Quad,Quad,Nosy Be Authentique,Journée,130
+Terrestre,Voiture,Voiture,Vent Sacré,Journée,90
+Terrestre,Voiture,Voiture,Souffle Tropical,Journée,110
+Terrestre,Voiture,Voiture,Flash Adventure,Demi-journée,75
+Terrestre,Tuk-Tuk,Tuk-Tuk,Vent Sacré,Journée,90
+Terrestre,Tuk-Tuk,Tuk-Tuk,Souffle Tropical,Journée,110
+Terrestre,Tuk-Tuk,Tuk-Tuk,Flash Adventure,Demi-journée,75
