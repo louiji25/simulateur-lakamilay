@@ -12,14 +12,11 @@ import urllib.parse
 # =========================
 st.set_page_config(page_title="Laka Am'lay POS", layout="centered")
 
-# Style CSS pour les boutons
 st.markdown("""
     <style>
     .stButton>button { width: 100%; height: 3.5em; font-size: 16px !important; border-radius: 10px; margin-top: 10px; }
-    .btn-print { background-color: #FF4B4B !important; color: white !important; }
-    .btn-new { background-color: #f0f2f6 !important; color: black !important; }
-    .btn-whatsapp { background-color: #25D366 !important; color: white !important; }
     iframe { border-radius: 10px; border: 1px solid #ddd; }
+    [data-testid="stMetricValue"] { font-size: 32px; color: #1e88e5; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -28,14 +25,11 @@ INFO_FILE = "infos.csv"
 RIB_FILE = "rib_agence.csv"
 
 def reset_app():
-    for key in st.session_state.keys():
-        del st.session_state[key]
     st.rerun()
 
 # --- Fonctions Fichiers ---
 def get_info_df():
-    if os.path.exists(INFO_FILE):
-        return pd.read_csv(INFO_FILE)
+    if os.path.exists(INFO_FILE): return pd.read_csv(INFO_FILE)
     return pd.DataFrame([["Nom", "LAKA AM'LAY"], ["Contact", "+261"]], columns=['Champ', 'Valeur'])
 
 def get_rib():
@@ -100,8 +94,8 @@ tab1, tab2, tab3 = st.tabs(["📝 DEVIS", "🧾 FACTURE", "⚙️ CONFIG"])
 with tab1:
     try:
         df_excu = pd.read_csv("data.csv")
-        nom_c = st.text_input("👤 Client", key="nom_client_devis")
-        tel_c = st.text_input("📱 WhatsApp (ex: 26132...)", key="tel_client_devis")
+        nom_c = st.text_input("👤 Client", key="in_nom")
+        tel_c = st.text_input("📱 WhatsApp (261...)", key="in_tel")
         type_e = st.selectbox("🌍 Type", [""] + sorted(df_excu["Type"].unique().tolist()))
         
         if type_e:
@@ -126,6 +120,9 @@ with tab1:
                         opts_list.append(f"Visite ({nb_sites} sites)")
                 if repas: supplements += 10; opts_list.append("Repas")
                 if guide: supplements += 15; opts_list.append("Guide")
+            else:
+                st.success("✅ Tout inclus (Mer)")
+                opts_list.append("Pack Mer Complet")
 
             nb_pax = st.number_input("👥 Pax", min_value=1, value=1)
             marge = st.slider("📈 Marge %", 0, 100, 20)
@@ -138,46 +135,37 @@ with tab1:
                     ref_final = generate_custom_ref(nom_c, "D")
                     opts_text = ", ".join(opts_list)
                     ticket_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Formule": formule, "Total": total_ttc}, nom_c, ref_final, opts_text)
+                    pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Ref": ref_final, "Client": nom_c, "Circuit": circuit, "Pax": nb_pax, "Total": round(total_ttc, 2), "Formule": formule, "Options": opts_text}]).to_csv(HIST_FILE, mode='a', header=not os.path.exists(HIST_FILE), index=False, encoding='utf-8-sig')
                     
-                    # Sauvegarde
-                    new_entry = {"Date": datetime.now().strftime("%Y-%m-%d"), "Ref": ref_final, "Client": nom_c, "Circuit": circuit, "Pax": nb_pax, "Total": round(total_ttc, 2), "Formule": formule, "Options": opts_text}
-                    pd.DataFrame([new_entry]).to_csv(HIST_FILE, mode='a', header=not os.path.exists(HIST_FILE), index=False, encoding='utf-8-sig')
-                    
-                    # Affichage
-                    base64_pdf = base64.b64encode(ticket_bytes).decode('utf-8')
-                    st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
-                    
-                    # Bouton Télécharger/Imprimer (Plus compatible mobile)
+                    st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(ticket_bytes).decode("utf-8")}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
                     st.download_button(label="🖨️ TELECHARGER & IMPRIMER", data=ticket_bytes, file_name=f"{ref_final}.pdf", mime="application/pdf")
-                    
-                    # Bouton Nouveau
-                    if st.button("➕ NOUVEAU DEVIS", key="btn_reset_devis"): reset_app()
-    except Exception as e: st.info("Prêt pour un nouveau devis")
+            
+            if st.button("➕ NOUVEAU DEVIS"): reset_app()
+    except Exception as e: st.info("Prêt")
 
 with tab2:
-    st.subheader("Facturation")
     if os.path.exists(HIST_FILE):
         df_h = pd.read_csv(HIST_FILE)
         devis_list = [r for r in df_h['Ref'].unique() if r.startswith("D")]
-        sel_ref = st.selectbox("Devis à convertir", [""] + devis_list)
-        
+        sel_ref = st.selectbox("Convertir Devis", [""] + devis_list)
         if sel_ref:
             f_data = df_h[df_h['Ref'] == sel_ref].iloc[0]
             ref_f = sel_ref.replace("D", "F", 1)
-            
             if st.button("📄 GENERER LA FACTURE"):
-                ticket_f = generate_thermal_ticket("Facture", f_data, f_data['Client'], ref_f, f_data.get('Options', ''))
-                base64_f = base64.b64encode(ticket_f).decode('utf-8')
-                st.markdown(f'<iframe src="data:application/pdf;base64,{base64_f}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
-                
-                st.download_button(label="🖨️ TELECHARGER & IMPRIMER", data=ticket_f, file_name=f"{ref_f}.pdf", mime="application/pdf")
-                
-                if st.button("➕ NOUVELLE FACTURE"): reset_app()
+                t_f = generate_thermal_ticket("Facture", f_data, f_data['Client'], ref_f, f_data.get('Options', ''))
+                st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(t_f).decode("utf-8")}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
+                st.download_button(label="🖨️ TELECHARGER & IMPRIMER", data=t_f, file_name=f"{ref_f}.pdf", mime="application/pdf")
+            if st.button("➕ NOUVELLE FACTURE"): reset_app()
     else: st.info("Aucun historique")
 
 with tab3:
     st.subheader("Configuration")
-    if st.button("🔄 RESET COMPLET"): reset_app()
-    df_i = get_info_df()
-    new_i = st.data_editor(df_i, num_rows="dynamic")
+    if st.button("🗑️ REMISE À ZÉRO COMPTEURS"):
+        if os.path.exists(HIST_FILE): os.remove(HIST_FILE)
+        st.success("Prêt pour D000001")
+    st.divider()
+    df_i = get_info_df(); new_i = st.data_editor(df_i, num_rows="dynamic")
     if st.button("Sauver En-tête"): new_i.to_csv(INFO_FILE, index=False)
+    st.divider()
+    df_r = get_rib(); new_r = st.data_editor(df_r, num_rows="dynamic")
+    if st.button("Sauver RIB"): new_r.to_csv(RIB_FILE, index=False)
