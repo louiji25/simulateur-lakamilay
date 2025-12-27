@@ -47,8 +47,9 @@ def generate_custom_ref(client_name, prefix="D"):
     clean_name = "".join(filter(str.isalnum, client_name)).upper()
     return f"{prefix}{count:06d}-{clean_name}"
 
-# --- Génération Ticket ---
-def generate_thermal_ticket(type_doc, data, client_name, ref, options_text=""):
+# --- Génération Ticket Corrigée ---
+def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", options_text=""):
+    # Format 80mm de large, hauteur extensible
     pdf = FPDF(format=(80, 250))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
@@ -70,21 +71,25 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_text=""):
     pdf.cell(0, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True)
     pdf.cell(0, 5, f"Ref: {ref}", ln=True)
     pdf.cell(0, 5, f"Client: {client_name}", ln=True)
+    if contact:
+        pdf.cell(0, 5, f"Contact: {contact}", ln=True)
     
     pdf.ln(2); pdf.cell(0, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
-    # Détails Prestation
+    # Détails Prestation (Alignement GAUCHE corrigé)
     pdf.set_font("Helvetica", 'B', 9)
-    pdf.multi_cell(0, 5, f"Circuit: {data.get('Circuit', 'N/A')}")
+    pdf.multi_cell(0, 5, f"Circuit: {data.get('Circuit', 'N/A')}", align='L')
+    
     pdf.set_font("Helvetica", '', 8)
-    pdf.cell(0, 5, f"Pax: {data.get('Pax', 1)} | Formule: {data.get('Formule', '')}", ln=True)
+    pdf.cell(0, 5, f"Pax: {data.get('Pax', 1)} | Formule: {data.get('Formule', '')}", ln=True, align='L')
     
     if options_text:
         pdf.set_font("Helvetica", 'I', 7)
-        pdf.multi_cell(0, 4, f"Options: {options_text}")
+        pdf.multi_cell(0, 4, f"Options: {options_text}", align='L')
     
     pdf.ln(2)
     pdf.set_font("Helvetica", 'B', 12)
+    # Total à droite pour le style ticket
     pdf.cell(0, 10, f"TOTAL: {float(data.get('Total', 0)):.2f} EUR", ln=True, align='R')
     pdf.ln(2); pdf.cell(0, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
@@ -100,6 +105,7 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_text=""):
     pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(0, 5, "Merci de votre confiance !", ln=True, align='C')
     
+    # Export sécurisé en bytes
     out = pdf.output()
     return bytes(out) if isinstance(out, (bytes, bytearray)) else str(out).encode('latin-1')
 
@@ -111,7 +117,8 @@ tab1, tab2, tab3 = st.tabs(["📝 DEVIS", "🧾 FACTURE", "⚙️ CONFIG"])
 with tab1:
     try:
         df_excu = pd.read_csv("data.csv", encoding='utf-8-sig')
-        nom_c = st.text_input("👤 Nom du Client", key="nom_devis")
+        nom_c = st.text_input("👤 Nom du Client", key="nom_dev")
+        contact_c = st.text_input("📱 WhatsApp / Email", key="cont_dev")
         
         type_e = st.selectbox("🌍 Type", [""] + sorted(df_excu["Type"].unique().tolist()))
         
@@ -138,6 +145,9 @@ with tab1:
                         opts_list.append(f"Visite ({nb_sites} sites)")
                 if repas: supplements += 10; opts_list.append("Repas")
                 if guide: supplements += 15; opts_list.append("Guide")
+            else:
+                st.success("✅ Pack Mer Tout Inclus")
+                opts_list.append("Sortie Mer")
 
             nb_pax = st.number_input("👥 Pax", min_value=1, value=1)
             marge = st.slider("📈 Marge %", 0, 100, 20)
@@ -149,13 +159,14 @@ with tab1:
                 else:
                     ref_d = generate_custom_ref(nom_c, "D")
                     opts_txt = ", ".join(opts_list)
-                    pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Formule": formule, "Total": total_ttc}, nom_c, ref_d, opts_txt)
+                    pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Formule": formule, "Total": total_ttc}, nom_c, ref_d, contact_c, opts_txt)
                     
-                    # Sauvegarde avec structure exacte
+                    # Sauvegarde
                     new_line = pd.DataFrame([{
                         "Date": datetime.now().strftime("%Y-%m-%d"),
                         "Ref": ref_d,
                         "Client": nom_c,
+                        "Contact": contact_c,
                         "Circuit": circuit,
                         "Pax": nb_pax,
                         "Total": round(total_ttc, 2),
@@ -164,11 +175,12 @@ with tab1:
                     }])
                     new_line.to_csv(HIST_FILE, mode='a', header=not os.path.exists(HIST_FILE), index=False, encoding='utf-8-sig')
                     
+                    st.success(f"Devis {ref_d} généré !")
                     b64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
                     st.markdown(f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
-                    st.download_button("🖨️ TELECHARGER", data=pdf_bytes, file_name=f"{ref_d}.pdf", mime="application/pdf")
+                    st.download_button("🖨️ TELECHARGER TICKET", data=pdf_bytes, file_name=f"{ref_d}.pdf", mime="application/pdf")
             
-            if st.button("➕ NOUVEAU"): reset_app()
+            if st.button("➕ NOUVEAU DEVIS"): reset_app()
     except Exception as e: st.info("Prêt pour la saisie")
 
 with tab2:
@@ -181,17 +193,25 @@ with tab2:
             if sel_ref:
                 f_data = df_h[df_h['Ref'] == sel_ref].iloc[0]
                 ref_f = sel_ref.replace("D", "F", 1)
+                
+                # Vérifier si la colonne Contact existe dans le fichier
+                cont_val = str(f_data['Contact']) if 'Contact' in f_data else ""
+                
                 if st.button("📄 GENERER FACTURE"):
-                    pdf_fact = generate_thermal_ticket("Facture", f_data.to_dict(), f_data['Client'], ref_f, str(f_data['Options']))
+                    pdf_fact = generate_thermal_ticket("Facture", f_data.to_dict(), f_data['Client'], ref_f, cont_val, str(f_data['Options']))
                     b64_f = base64.b64encode(pdf_fact).decode('utf-8')
                     st.markdown(f'<iframe src="data:application/pdf;base64,{b64_f}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
                     st.download_button("🖨️ TELECHARGER FACTURE", data=pdf_fact, file_name=f"{ref_f}.pdf", mime="application/pdf")
-        except: st.error("Fichier corrompu. Réinitialisez dans Config.")
+        except: st.error("Erreur de lecture de l'historique.")
 
 with tab3:
     if st.button("🗑️ RESET HISTORIQUE"):
         if os.path.exists(HIST_FILE): os.remove(HIST_FILE)
+        st.success("Historique effacé !")
         st.rerun()
     st.divider()
     df_i = get_info_df(); new_i = st.data_editor(df_i, num_rows="dynamic")
     if st.button("Sauver Infos"): new_i.to_csv(INFO_FILE, index=False, encoding='utf-8-sig')
+    st.divider()
+    df_r = get_rib(); new_r = st.data_editor(df_r, num_rows="dynamic")
+    if st.button("Sauver RIB"): new_r.to_csv(RIB_FILE, index=False, encoding='utf-8-sig')
