@@ -15,7 +15,7 @@ st.set_page_config(page_title="Laka Am'lay POS", layout="centered")
 st.markdown("""
     <style>
     .stButton>button { width: 100%; height: 3.5em; font-size: 16px !important; border-radius: 10px; margin-top: 10px; }
-    iframe { border-radius: 10px; border: 1px solid #ddd; }
+    iframe { border-radius: 10px; border: 1px solid #ddd; background-color: white; }
     [data-testid="stMetricValue"] { font-size: 32px; color: #1e88e5; }
     </style>
     """, unsafe_allow_html=True)
@@ -46,45 +46,69 @@ def generate_custom_ref(client_name, prefix="D"):
     clean_name = "".join(filter(str.isalnum, client_name)).upper()
     return f"{prefix}{count:06d}-{clean_name}"
 
-# --- Génération Ticket ---
+# --- Génération Ticket (CORRIGÉE POUR STREAMLIT CLOUD) ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, options_text=""):
     pdf = FPDF(format=(80, 250))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
     df_infos = get_info_df()
-    pdf.set_font("Arial", 'B', 12)
+    
+    # En-tête
+    pdf.set_font("Helvetica", 'B', 12)
     pdf.cell(0, 8, str(df_infos.iloc[0]['Valeur']), ln=True, align='C')
-    pdf.set_font("Arial", '', 8)
+    pdf.set_font("Helvetica", '', 8)
     for i in range(1, len(df_infos)):
         pdf.cell(0, 4, f"{df_infos.iloc[i]['Champ']}: {df_infos.iloc[i]['Valeur']}", ln=True, align='C')
+    
     pdf.ln(2); pdf.cell(0, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
-    pdf.set_font("Arial", 'B', 10)
+    
+    # Infos Doc
+    pdf.set_font("Helvetica", 'B', 10)
     pdf.cell(0, 6, f"{type_doc.upper()}", ln=True, align='C')
-    pdf.set_font("Arial", '', 8)
+    pdf.set_font("Helvetica", '', 8)
     pdf.cell(0, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True)
     pdf.cell(0, 5, f"Ref: {ref}", ln=True)
     pdf.cell(0, 5, f"Client: {client_name}", ln=True)
+    
     pdf.ln(2); pdf.cell(0, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
-    pdf.set_font("Arial", 'B', 9)
+    
+    # Détails
+    pdf.set_font("Helvetica", 'B', 9)
     pdf.multi_cell(0, 5, f"Circuit: {data.get('Circuit', 'N/A')}")
-    pdf.set_font("Arial", '', 8)
+    pdf.set_font("Helvetica", '', 8)
     pdf.cell(0, 5, f"Pax: {data.get('Pax', 1)} | Formule: {data.get('Formule', '')}", ln=True)
+    
     if options_text:
-        pdf.set_font("Arial", 'I', 7)
-        pdf.multi_cell(0, 4, f"Détails: {options_text}")
+        pdf.set_font("Helvetica", 'I', 7)
+        pdf.multi_cell(0, 4, f"Details: {options_text}")
+    
     pdf.ln(2)
-    pdf.set_font("Arial", 'B', 12)
+    pdf.set_font("Helvetica", 'B', 12)
     pdf.cell(0, 10, f"TOTAL: {float(data.get('Total', 0)):.2f} EUR", ln=True, align='R')
+    
     pdf.ln(2); pdf.cell(0, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
-    pdf.set_font("Arial", 'B', 7)
+    
+    # RIB
+    pdf.set_font("Helvetica", 'B', 7)
     pdf.cell(0, 4, "COORDONNEES BANCAIRES:", ln=True)
-    pdf.set_font("Arial", '', 7)
+    pdf.set_font("Helvetica", '', 7)
     ribs = get_rib()
     for _, row in ribs.iterrows():
         pdf.cell(0, 4, f"{row['Banque']}: {row['IBAN/RIB']}", ln=True)
-    pdf.ln(5); pdf.set_font("Arial", 'I', 8)
+    
+    pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(0, 5, "Merci de votre confiance !", ln=True, align='C')
-    return pdf.output(dest='S').encode('latin-1')
+    
+    # --- CORRECTION ICI ---
+    # fpdf2 retourne directement des bytes avec output()
+    return pdf.output()
+
+# --- Fonction pour afficher l'aperçu PDF ---
+def show_pdf_preview(pdf_bytes):
+    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+    # Ajout de paramètres pour forcer l'affichage dans l'iframe
+    pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0&navpanes=0&scrollbar=0" width="100%" height="400" type="application/pdf"></iframe>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 # =========================
 # INTERFACE
@@ -95,7 +119,7 @@ with tab1:
     try:
         df_excu = pd.read_csv("data.csv")
         nom_c = st.text_input("👤 Client", key="in_nom")
-        tel_c = st.text_input("📱 WhatsApp (261...)", key="in_tel")
+        tel_c = st.text_input("📱 WhatsApp (ex: 26132...)", key="in_tel")
         type_e = st.selectbox("🌍 Type", [""] + sorted(df_excu["Type"].unique().tolist()))
         
         if type_e:
@@ -135,9 +159,12 @@ with tab1:
                     ref_final = generate_custom_ref(nom_c, "D")
                     opts_text = ", ".join(opts_list)
                     ticket_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Formule": formule, "Total": total_ttc}, nom_c, ref_final, opts_text)
+                    
+                    # Sauvegarde
                     pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Ref": ref_final, "Client": nom_c, "Circuit": circuit, "Pax": nb_pax, "Total": round(total_ttc, 2), "Formule": formule, "Options": opts_text}]).to_csv(HIST_FILE, mode='a', header=not os.path.exists(HIST_FILE), index=False, encoding='utf-8-sig')
                     
-                    st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(ticket_bytes).decode("utf-8")}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
+                    st.success(f"Devis {ref_final} créé !")
+                    show_pdf_preview(ticket_bytes)
                     st.download_button(label="🖨️ TELECHARGER & IMPRIMER", data=ticket_bytes, file_name=f"{ref_final}.pdf", mime="application/pdf")
             
             if st.button("➕ NOUVEAU DEVIS"): reset_app()
@@ -153,7 +180,7 @@ with tab2:
             ref_f = sel_ref.replace("D", "F", 1)
             if st.button("📄 GENERER LA FACTURE"):
                 t_f = generate_thermal_ticket("Facture", f_data, f_data['Client'], ref_f, f_data.get('Options', ''))
-                st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(t_f).decode("utf-8")}" width="100%" height="400"></iframe>', unsafe_allow_html=True)
+                show_pdf_preview(t_f)
                 st.download_button(label="🖨️ TELECHARGER & IMPRIMER", data=t_f, file_name=f"{ref_f}.pdf", mime="application/pdf")
             if st.button("➕ NOUVELLE FACTURE"): reset_app()
     else: st.info("Aucun historique")
